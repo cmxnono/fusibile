@@ -619,12 +619,14 @@ static int runFusibile (int argc,
     pTime = localtime(&timeObj);
 
     char output_folder[256];
-    sprintf(output_folder, "%s/consistencyCheck-%04d%02d%02d-%02d%02d%02d/",results_folder.c_str(), pTime->tm_year+1900, pTime->tm_mon+1,pTime->tm_mday,pTime->tm_hour, pTime->tm_min, pTime->tm_sec);
+//sprintf(output_folder, "%s/consistencyCheck-%04d%02d%02d-%02d%02d%02d/",results_folder.c_str(), pTime->tm_year+1900, pTime->tm_mon+1,pTime->tm_mday,pTime->tm_hour, pTime->tm_min, pTime->tm_sec);
+    sprintf(output_folder, "%s/",results_folder.c_str());
 #if defined(_WIN32)
     _mkdir(output_folder);
 #else
     mkdir(output_folder, 0777);
 #endif
+    cout <<"output folder is " << output_folder << endl;
 
     vector<string> subfolders;
     get_subfolders(results_folder.c_str(), subfolders);

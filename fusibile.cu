@@ -232,6 +232,7 @@ __global__ void fusibile (GlobalState &gs, int ref_camera)
                     //printf ("Saved point on camera %d is %d %d\n", idxCurr, (int)tmp_pt.x, (int)tmp_pt.y);
                     used_list[idxCurr].x=(int)tmp_pt.x;
                     used_list[idxCurr].y=(int)tmp_pt.y;
+                    gs.pc->points[center].usedImg[idxCurr] = (unsigned char)1;
 
                     number_consistent++;
                 }
@@ -281,9 +282,12 @@ void copy_point_cloud_to_host(GlobalState &gs, int cam, PointCloudList &pc_list)
 {
     printf("Processing camera %d\n", cam);
     unsigned int count = pc_list.size;
+    unsigned int old_count = pc_list.size;
+    int ptsVisCnt = 0;
     for (int y=0; y<gs.pc->rows; y++) {
         for (int x=0; x<gs.pc->cols; x++) {
             Point_cu &p = gs.pc->points[x+y*gs.pc->cols];
+            unsigned char * pIdx = p.usedImg;
             const float4 X      = p.coord;
             const float4 normal = p.normal;
             float texture4[4];
@@ -302,6 +306,11 @@ void copy_point_cloud_to_host(GlobalState &gs, int cam, PointCloudList &pc_list)
 
             }
             if (X.x != 0 && X.y != 0 && X.z != 0) {
+                for(int i = 0; i < MAX_IMAGES; i++)
+                    if(pIdx[i] != 0) {
+                        pc_list.ptsVisIdx[count].push_back(i);
+                        ptsVisCnt ++;
+                    }
                 pc_list.points[count].coord   = X;
                 pc_list.points[count].normal  = normal;
 #ifdef SAVE_TEXTURE
@@ -313,9 +322,10 @@ void copy_point_cloud_to_host(GlobalState &gs, int cam, PointCloudList &pc_list)
                 count++;
             }
             p.coord = make_float4(0,0,0,0);
+            memset(pIdx, 0, sizeof(unsigned char)*MAX_IMAGES);
         }
     }
-    printf("Found %.2f million points\n", count/1000000.0f);
+    printf("Found %.2f million points new pts: %d new vidx: %d\n", count/1000000.0f, count - old_count, ptsVisCnt);
     pc_list.size = count;
 }
 
@@ -383,7 +393,7 @@ void fusibile_cu(GlobalState &gs, PointCloudList &pc_list, int num_views)
     block_size_initrand.x=32;
     block_size_initrand.y=32;
 
-/*     printf("Launching kernel with grid of size %d %d and block of size %d %d and shared size %d %d\nBlock %d %d and radius %d %d and tile %d %d\n",
+    printf("Launching kernel with grid of size %d %d and block of size %d %d and shared size %d %d\nBlock %d %d and radius %d %d and tile %d %d\n",
            grid_size.x,
            grid_size.y,
            block_size.x,
@@ -397,7 +407,7 @@ void fusibile_cu(GlobalState &gs, PointCloudList &pc_list, int num_views)
            TILE_W,
            TILE_H
           );
- */    printf("Grid size initrand is grid: %d-%d block: %d-%d\n", grid_size_initrand.x, grid_size_initrand.y, block_size_initrand.x, block_size_initrand.y);
+    printf("Grid size initrand is grid: %d-%d block: %d-%d\n", grid_size_initrand.x, grid_size_initrand.y, block_size_initrand.x, block_size_initrand.y);
 
     size_t avail;
     size_t total;
@@ -418,8 +428,10 @@ void fusibile_cu(GlobalState &gs, PointCloudList &pc_list, int num_views)
     //printf("Computing final disparity\n");
     //for (int cam=0; cam<10; cam++) {
     for (int cam=0; cam<num_views; cam++) {
+        printf("fusibile_cu cam: %d\n", cam);
         fusibile<<< grid_size_initrand, block_size_initrand, cam>>>(gs, cam);
         cudaDeviceSynchronize();
+        printf("copy_point_cloud_to_host cam: %d\n", cam);
         copy_point_cloud_to_host(gs, cam, pc_list); // slower but saves memory
         cudaDeviceSynchronize();
     }
